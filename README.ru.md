@@ -17,6 +17,7 @@ Docker Compose-стеки, разворачиваемые через **Dockhand 
 
 | Стек | Назначение | Окружения | Секреты (Dockhand env) |
 |------|------------|-----------|------------------------|
+| [hawser](hawser/) | Сам edge-агент Hawser — ⚠️ доставляет все остальные стеки, сначала прочитайте его README | только лаборатория, пока самообновление не проверено | `TOKEN` |
 | [remnanode](remnanode/) | Нода Remnawave + reality-fallback прокси (Angie) | fi / kz / ru | `SECRET_KEY` |
 | [semaphore](semaphore/) | Semaphore (веб-UI Ansible) — control plane | panel | `SEMAPHORE_ADMIN_PASSWORD`, `SEMAPHORE_ACCESS_KEY_ENCRYPTION` |
 | [test-fromgit](test-fromgit/) | Одноразовый тест From-Git конвейера (временный) | test | — |

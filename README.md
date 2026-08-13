@@ -17,6 +17,7 @@ repo only owns what runs **in containers**.
 
 | Stack | Purpose | Environments | Secrets (Dockhand env) |
 |-------|---------|--------------|------------------------|
+| [hawser](hawser/) | The Hawser edge agent itself — ⚠️ delivers every other stack; read its README first | lab only, until self-update is proven | `TOKEN` |
 | [remnanode](remnanode/) | Remnawave node + reality-fallback proxy (Angie) | fi / kz / ru | `SECRET_KEY` |
 | [semaphore](semaphore/) | Semaphore (Ansible web UI) — control plane | panel | `SEMAPHORE_ADMIN_PASSWORD`, `SEMAPHORE_ACCESS_KEY_ENCRYPTION` |
 | [test-fromgit](test-fromgit/) | Throwaway From-Git pipeline test (temporary) | test | — |
