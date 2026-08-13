@@ -2,53 +2,48 @@
 
 🇬🇧 English · [🇷🇺 Русский](README.ru.md)
 
-The Hawser edge agent, deployed as a Dockhand From-Git stack so that its compose
-file has one home and changes reach the fleet by polling instead of by hand.
+The Hawser edge agent. This folder is the single source of the agent's compose
+file, so it is edited here and nowhere else — but unlike every other stack in
+this repository, **Dockhand does not deploy it.**
 
-## ⚠️ This stack is the delivery mechanism for every other stack
+## ⚠️ Never create a From-Git stack from this folder
 
-Read this before touching it. Hawser is what Dockhand talks to; everything else
-here arrives *through* it. Two consequences that do not apply to any other
-folder in this repository:
+`roles/hawser` in
+[ansible-playbooks](https://github.com/nargothrondir/ansible-playbooks) fetches
+this file over HTTPS at a pinned commit and brings it up over SSH. That is the
+only supported path.
 
-**A bad merge here breaks management of every host at once,** at the next poll,
-and cannot be fixed from Dockhand — the fix would have to travel through the
-agent it just broke. Recovery is an Ansible run per host, over SSH:
+This is not caution — it was measured on the lab node on 2026-08-13:
 
-```bash
-ansible-playbook playbooks/hawser.yml --limit <host>
+```
+2bd614e0a5a9_hawser-hawser-1   Created        <- never started
+hawser                          Exited (0)     <- stopped itself
+PL-1                            Failed         <- no agent at all
 ```
 
-**A redeploy of this stack is the agent recreating its own container.** The
-instruction arrives over the connection the recreation drops. The container
-should survive — the Docker daemon performs the recreation, not the client that
-requested it — but whether the deploy is ever reported *complete* is something
-the agent cannot answer about itself. That behaviour is being established on the
-lab node; until it is, do not deploy this stack to a production environment.
+Deploying this stack through Dockhand makes the agent run `compose up` on the
+project that contains the agent. It stopped its own container, and the
+replacement was left in `Created`, because the process that would have started it
+was inside the container it had just stopped. `restart: unless-stopped` does not
+help — it does not apply to a container that never ran.
 
-## The first install cannot come from here
+Dockhand reported `Failed to up via Hawser: Connection error` 1.1 seconds after
+sending the request, and the node was unmanaged until an Ansible run restored it.
 
-Dockhand reaches a node only through Hawser, so a node with no agent cannot be
-sent one. `roles/hawser` in
-[ansible-playbooks](https://github.com/nargothrondir/ansible-playbooks)
-bootstraps the agent on a bare host and remains the disaster-recovery path,
-exactly as `roles/semaphore` does for the `semaphore` stack.
+The same reasoning rules out the first install: Dockhand reaches a node only
+through Hawser, so a node without an agent cannot be sent one.
 
-So this stack does not replace the role. It takes over the *lifecycle* after the
-role has done the *bootstrap*.
+## How it actually gets to a node
 
-## Deploy
+1. `roles/hawser` fetches this file at a pinned commit — the repository is
+   public, so no credential is involved
+2. the role renders a `.env` beside it with the host's own values
+3. `docker compose up -d` over SSH
 
-Dockhand → Stacks → **From Git**, path `hawser`, into the target host's
-environment.
+Editing this file therefore reaches the fleet through the pin bump and an Ansible
+run, not through a Dockhand poll.
 
-The stack deliberately declares **no `container_name`**. The bootstrap project at
-`/opt/hawser` claims the name `hawser`, and an explicit `container_name` collides
-across compose projects — Docker refuses the second one outright. Letting compose
-derive the name is what allows this stack to deploy while the bootstrap agent is
-still running, which is the only order the handover can happen in.
-
-## Environment
+## Environment (`.env`, written by the role)
 
 | Variable | Required | Purpose |
 |---|---|---|
@@ -57,10 +52,11 @@ still running, which is the only order the handover can happen in.
 | `STACKS_DIR` | no (`/opt/hawser-stacks`) | Where the agent writes the stacks it deploys |
 | `REQUEST_TIMEOUT` | no (`120`) | Seconds. The upstream default of 30 cancels a From-Git deploy mid-pull on a slow host |
 
-`TOKEN` must be the token Dockhand actually issued for **this** environment. A
-value that merely looks valid strands the host: the agent starts, fails to
-authenticate, and only an SSH-borne Ansible run brings it back. Ansible stores
-the same value in OpenBao at `infra/hawser`, keyed by inventory hostname.
+`TOKEN` is a real credential and never appears in this file — it lives only in
+the `.env`, which the role writes `0600` under `no_log`. A plausible-but-wrong
+value strands the host: the agent starts, fails to authenticate, and only an
+SSH-borne Ansible run brings it back. Ansible keeps the same value in OpenBao at
+`infra/hawser`, keyed by inventory hostname.
 
 ## Why the mount paths are identical on both sides
 
