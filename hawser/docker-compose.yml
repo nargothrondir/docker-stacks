@@ -1,0 +1,54 @@
+# Hawser edge agent — Dockhand From-Git stack.
+#
+# UNIQUE among the stacks here: this is the agent that DELIVERS the others. A
+# redeploy of this stack is Hawser recreating its own container, so the
+# instruction arrives over the very connection the recreation drops. The
+# container itself should be fine — the Docker daemon owns the recreation, not
+# the client that asked for it — but whether the deploy is ever reported
+# COMPLETE is not something the agent can answer about itself. That is being
+# established on the lab node before this reaches any production host.
+#
+# The FIRST install can never come from here. Dockhand reaches a node only
+# through Hawser, so a node without an agent cannot be sent one. roles/hawser in
+# ansible-playbooks bootstraps it and remains the disaster-recovery path —
+# exactly as roles/semaphore does for the semaphore stack.
+#
+# No container_name, on purpose. The bootstrap project at /opt/hawser sets it to
+# "hawser", and an explicit container_name collides ACROSS compose projects:
+# Docker refuses the second one outright. Letting compose derive the name is
+# what allows this stack to deploy while the bootstrap agent is still running —
+# and that is the only order in which the handover can happen at all.
+#
+# Secrets (Dockhand secret env vars): TOKEN.
+services:
+  hawser:
+    image: ghcr.io/finsys/hawser:0.2.46
+    restart: unless-stopped
+    environment:
+      DOCKHAND_SERVER_URL: ${DOCKHAND_SERVER_URL:?DOCKHAND_SERVER_URL must be set (Dockhand env), e.g. wss://dockhand.example.com/api/hawser/connect}
+      # The token Dockhand issued for THIS environment. A wrong-but-plausible
+      # value strands the host: the agent starts, fails to authenticate, and the
+      # only way back is a run of hawser.yml over SSH.
+      TOKEN: ${TOKEN:?TOKEN must be set (Dockhand secret env) — the agent token issued for this environment}
+      STACKS_DIR: ${STACKS_DIR:-/opt/hawser-stacks}
+      # Upstream default is 30s, which cancels a From-Git deploy mid-pull on a
+      # slow host — measured, ansible-playbooks #12.
+      REQUEST_TIMEOUT: ${REQUEST_TIMEOUT:-120}
+    volumes:
+      # Long form with create_host_path: false. The short form would silently
+      # create a DIRECTORY named docker.sock if the path were ever wrong, and the
+      # agent would come up healthy with no way to reach Docker at all.
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        bind:
+          create_host_path: false
+      # Identical path on both sides, and that is load-bearing: the agent hands
+      # compose file paths to the Docker daemon, which resolves them in the HOST
+      # namespace. A different path inside the container would make every stack
+      # it deploys point at nothing.
+      - type: bind
+        source: ${STACKS_DIR:-/opt/hawser-stacks}
+        target: ${STACKS_DIR:-/opt/hawser-stacks}
+        bind:
+          create_host_path: false

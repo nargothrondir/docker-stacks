@@ -70,10 +70,15 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Validate every compose file
+        # Dummies for every ${VAR:?...} in any stack — `docker compose config`
+        # honours the :? and aborts on an unset one, so a new required variable
+        # must be added here in the same commit that introduces it.
         env:
           SECRET_KEY: dummy
           ACME_DOMAIN: dummy
           NODE_NAME: dummy
+          TOKEN: dummy
+          DOCKHAND_SERVER_URL: dummy
         run: |
           set -euo pipefail
           found=0
