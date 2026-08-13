@@ -13,11 +13,19 @@ Docker Compose-стеки, разворачиваемые через **Dockhand 
 [ansible-playbooks](https://github.com/nargothrondir/ansible-playbooks); этот
 репозиторий отвечает только за то, что работает **в контейнерах**.
 
+**Одно исключение из «разворачивается через Dockhand» — [`hawser/`](hawser/).**
+Это тот самый агент, *через который* Dockhand доставляет всё остальное, поэтому
+доставить им же его нельзя: при такой попытке агент останавливает собственный
+контейнер посреди команды и нода остаётся без управления (измерено, см. его
+README). Этот стек забирает отсюда Ansible и разворачивает по SSH. Папка
+по-прежнему остаётся единственным источником его compose — отличается только
+способ доставки.
+
 ## Стеки
 
 | Стек | Назначение | Окружения | Секреты (Dockhand env) |
 |------|------------|-----------|------------------------|
-| [hawser](hawser/) | Сам edge-агент Hawser — ⚠️ доставляет все остальные стеки, сначала прочитайте его README | только лаборатория, пока самообновление не проверено | `TOKEN` |
+| [hawser](hawser/) | Edge-агент Hawser — ⚠️ разворачивается **Ansible**, никогда не Dockhand; прочитайте его README, прежде чем трогать | все ноды, через `roles/hawser` | — (`TOKEN` лежит в `.env`, который пишет роль) |
 | [remnanode](remnanode/) | Нода Remnawave + reality-fallback прокси (Angie) | fi / kz / ru | `SECRET_KEY` |
 | [semaphore](semaphore/) | Semaphore (веб-UI Ansible) — control plane | panel | `SEMAPHORE_ADMIN_PASSWORD`, `SEMAPHORE_ACCESS_KEY_ENCRYPTION` |
 | [test-fromgit](test-fromgit/) | Одноразовый тест From-Git конвейера (временный) | test | — |

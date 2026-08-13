@@ -13,11 +13,18 @@ Host/OS provisioning lives in
 [ansible-playbooks](https://github.com/nargothrondir/ansible-playbooks); this
 repo only owns what runs **in containers**.
 
+**One exception to "deployed via Dockhand": [`hawser/`](hawser/).** It is the
+agent Dockhand delivers everything else *through*, so Dockhand cannot deliver it
+— deploying it that way makes the agent stop its own container mid-command and
+leaves the node unmanaged (measured, see its README). Ansible fetches that one
+from here and deploys it over SSH. The folder is still the single source of its
+compose; only the delivery differs.
+
 ## Stacks
 
 | Stack | Purpose | Environments | Secrets (Dockhand env) |
 |-------|---------|--------------|------------------------|
-| [hawser](hawser/) | The Hawser edge agent itself — ⚠️ delivers every other stack; read its README first | lab only, until self-update is proven | `TOKEN` |
+| [hawser](hawser/) | The Hawser edge agent — ⚠️ deployed by **Ansible**, never by Dockhand; read its README before touching it | every node, via `roles/hawser` | — (`TOKEN` lives in a role-written `.env`) |
 | [remnanode](remnanode/) | Remnawave node + reality-fallback proxy (Angie) | fi / kz / ru | `SECRET_KEY` |
 | [semaphore](semaphore/) | Semaphore (Ansible web UI) — control plane | panel | `SEMAPHORE_ADMIN_PASSWORD`, `SEMAPHORE_ACCESS_KEY_ENCRYPTION` |
 | [test-fromgit](test-fromgit/) | Throwaway From-Git pipeline test (temporary) | test | — |

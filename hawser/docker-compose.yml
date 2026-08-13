@@ -1,35 +1,34 @@
-# Hawser edge agent — Dockhand From-Git stack.
+# Hawser edge agent.
 #
-# UNIQUE among the stacks here: this is the agent that DELIVERS the others. A
-# redeploy of this stack is Hawser recreating its own container, so the
-# instruction arrives over the very connection the recreation drops. The
-# container itself should be fine — the Docker daemon owns the recreation, not
-# the client that asked for it — but whether the deploy is ever reported
-# COMPLETE is not something the agent can answer about itself. That is being
-# established on the lab node before this reaches any production host.
+# ⚠️ NOT a Dockhand From-Git stack, and it must never become one. This file is
+# the single source of the agent's compose; `roles/hawser` in ansible-playbooks
+# fetches it over HTTPS at a pinned commit and brings it up over SSH. Dockhand
+# never deploys it.
 #
-# The FIRST install can never come from here. Dockhand reaches a node only
-# through Hawser, so a node without an agent cannot be sent one. roles/hawser in
-# ansible-playbooks bootstraps it and remains the disaster-recovery path —
-# exactly as roles/semaphore does for the semaphore stack.
+# That is not a preference. It was tried on the lab node on 2026-08-13 and the
+# node lost management: deploying this stack through Dockhand makes the agent run
+# `compose up` on the project that contains the agent. It stopped its own
+# container, and the replacement was left in `Created` — the process that would
+# have started it was inside the container it had just stopped. `restart:
+# unless-stopped` does not apply to a container that never ran. Recovery was an
+# Ansible run over SSH.
 #
-# No container_name, on purpose. The bootstrap project at /opt/hawser sets it to
-# "hawser", and an explicit container_name collides ACROSS compose projects:
-# Docker refuses the second one outright. Letting compose derive the name is
-# what allows this stack to deploy while the bootstrap agent is still running —
-# and that is the only order in which the handover can happen at all.
+# The same reasoning rules out the first install: Dockhand reaches a node only
+# through Hawser, so a node without an agent cannot be sent one.
 #
-# Secrets (Dockhand secret env vars): TOKEN.
+# Values come from a `.env` written next to this file by roles/hawser — TOKEN is
+# a real secret and lives only there (0600, no_log), never in this file.
 services:
   hawser:
     image: ghcr.io/finsys/hawser:0.2.46
+    container_name: hawser
     restart: unless-stopped
     environment:
-      DOCKHAND_SERVER_URL: ${DOCKHAND_SERVER_URL:?DOCKHAND_SERVER_URL must be set (Dockhand env), e.g. wss://dockhand.example.com/api/hawser/connect}
+      DOCKHAND_SERVER_URL: ${DOCKHAND_SERVER_URL:?DOCKHAND_SERVER_URL must be set in .env, e.g. wss://dockhand.example.com/api/hawser/connect}
       # The token Dockhand issued for THIS environment. A wrong-but-plausible
       # value strands the host: the agent starts, fails to authenticate, and the
       # only way back is a run of hawser.yml over SSH.
-      TOKEN: ${TOKEN:?TOKEN must be set (Dockhand secret env) — the agent token issued for this environment}
+      TOKEN: ${TOKEN:?TOKEN must be set in .env — the agent token issued for this environment}
       STACKS_DIR: ${STACKS_DIR:-/opt/hawser-stacks}
       # Upstream default is 30s, which cancels a From-Git deploy mid-pull on a
       # slow host — measured, ansible-playbooks #12.
