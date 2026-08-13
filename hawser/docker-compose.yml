@@ -23,6 +23,22 @@ services:
     image: ghcr.io/finsys/hawser:0.2.46
     container_name: hawser
     restart: unless-stopped
+    labels:
+      # Upstream calls this "critical for both Standard and Edge mode agents":
+      # Dockhand's auto-update would recreate this container, severing the
+      # connection it is issuing the command over, and the update then "hangs
+      # indefinitely". The vendor's own words — "it cannot update itself through
+      # Dockhand — it would be cutting the branch it's sitting on".
+      #
+      # Measured here before the manual was read: the replacement container was
+      # left in `Created` and the node lost management until an Ansible run
+      # restored it. The label is what stops a future auto-update from repeating
+      # it without anyone deciding to.
+      #
+      # Updates come from outside the agent instead — `hawser.yml --limit <host>`
+      # is the same shape as the vendor's suggested one-shot updater container,
+      # without a second container holding the Docker socket.
+      dockhand.update: "false"
     environment:
       DOCKHAND_SERVER_URL: ${DOCKHAND_SERVER_URL:?DOCKHAND_SERVER_URL must be set in .env, e.g. wss://dockhand.example.com/api/hawser/connect}
       # The token Dockhand issued for THIS environment. A wrong-but-plausible

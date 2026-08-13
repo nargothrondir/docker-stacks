@@ -43,6 +43,24 @@ through Hawser, so a node without an agent cannot be sent one.
 Editing this file therefore reaches the fleet through the pin bump and an Ansible
 run, not through a Dockhand poll.
 
+## Updating the agent
+
+1. Renovate opens a PR here bumping `ghcr.io/finsys/hawser` — five checks gate it
+2. merge it
+3. bump `hawser_compose_ref` in ansible-playbooks to the commit that merge
+   produced, and merge that
+4. `ansible-playbook playbooks/hawser.yml --limit <host>`
+
+Step 4 is the update, and it happens **from outside the agent** — which is the
+shape upstream recommends. Its manual suggests a companion one-shot `updater`
+container that pulls and recreates Hawser; an Ansible run over SSH does the same
+job without a second container holding the Docker socket.
+
+**Never through Dockhand's auto-update.** The `dockhand.update=false` label on the
+service is what enforces that, and upstream calls it *"critical for both Standard
+and Edge mode agents"*: Dockhand recreating this container severs the connection
+it is issuing the command over, and the update "hangs indefinitely".
+
 ## Environment (`.env`, written by the role)
 
 | Variable | Required | Purpose |
