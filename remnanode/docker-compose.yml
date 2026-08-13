@@ -1,0 +1,120 @@
+x-common: &common
+  ulimits:
+    nofile:
+      soft: 1048576
+      hard: 1048576
+  restart: always
+
+x-logging: &logging
+  logging:
+    driver: json-file
+    options:
+      max-size: 100m
+      max-file: 5
+
+services:
+  # Cloudflare DNS-01 hook backend for Angie native ACME (issue #13). Stock
+  # python image, script bind-mounted (no image to build/pin). Localhost only;
+  # host network so the host-networked Angie reaches it on 127.0.0.1:9001.
+  # CF_API_TOKEN is a Dockhand secret env — never committed.
+  acme-hook:
+    # Pinned by digest (Renovate bumps it): the token-holding container must be
+    # reproducible across the fleet, not a rolling -slim tag.
+    image: python:3.14-slim@sha256:a7fb1e634c4a578f9e0bd6327f11a3cde11b7a9395f48e24360c0988bcc5c2bc
+    container_name: acme-hook
+    hostname: acme-hook
+    <<: [*common, *logging]
+    network_mode: host
+    environment:
+      - CF_API_TOKEN=${CF_API_TOKEN}
+      # Single source of truth for the domain — set ACME_DOMAIN in Dockhand env.
+      # (When domains are split per node, CF_ZONE = the parent zone, decoupled
+      # from the per-node name — tracked on #21.)
+      - CF_ZONE=${ACME_DOMAIN:?ACME_DOMAIN must be set (Dockhand env)}
+      - HOOK_PORT=9001
+    volumes:
+      - ./acme-hook.py:/acme-hook.py:ro
+    command: python3 /acme-hook.py
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9001/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # Reality fallback / camouflage proxy. Migrated from nginx:1.28 to Angie.
+  # Listens on the unix socket that xray/reality forwards to (name kept:
+  # /dev/shm/nginx.sock — reality references this path).
+  remnawave-angie:
+    #image: docker.angie.software/angie:1.12.0-minimal
+    #image: docker.angie.software/angie:1.12.0
+    # Templated image: renders config via gomplate at startup (input-dir
+    # /etc/angie/templates -> output-dir /etc/angie). Lets the domain come from
+    # ${ACME_DOMAIN} instead of being hardcoded. gomplate uses {{ }} delimiters,
+    # so Angie's own $variables are untouched.
+    image: docker.angie.software/angie:1.12.1-templated
+    container_name: remnawave-angie
+    hostname: remnawave-angie
+    <<: [*common, *logging]
+    network_mode: host
+    depends_on:
+      acme-hook:
+        condition: service_healthy
+    environment:
+      # Read by gomplate to render server_name {{ .Env.NODE_NAME }}.{{ .Env.ACME_DOMAIN }}
+      # — this node's own name (e.g. pl.example.com), so it issues a cert for
+      # itself, not a fleet-wide wildcard. ACME_DOMAIN stays the parent zone.
+      - ACME_DOMAIN=${ACME_DOMAIN:?ACME_DOMAIN must be set (Dockhand env)}
+      - NODE_NAME=${NODE_NAME:?NODE_NAME must be set (Dockhand env, e.g. pl)}
+    volumes:
+      # Mounted into the templates INPUT dir; gomplate renders it to
+      # /etc/angie/http.d/default.conf (which the main config includes).
+      - ./angie.conf:/etc/angie/templates/http.d/default.conf:ro
+      # TLS now comes entirely from Angie native ACME (issue #13) — the certbot
+      # file bind-mounts are gone. ACME state (account key + issued certs) lives
+      # at the image's built-in path; external volume so redeploys don't
+      # re-issue. certbot on the host can be disabled after one clean renewal.
+      - angie-acme:/var/lib/angie/acme
+      - /dev/shm:/dev/shm:rw
+      # Reality camouflage (#57): self-contained decoy sites (distillium/
+      # sni-templates) bundled in the stack, replacing the host /var/www/html
+      # bind-mount. Each node picks its own site via the CAMO_SITE env so the
+      # fleet isn't fingerprintable by an identical page. The provisioning
+      # pipeline assigns one per node (dockhand-stack.yml in ansible-playbooks)
+      # and never overwrites a value already there, so it can still be chosen by
+      # hand in Dockhand: 10gag / downloader / speedtest / converter / YouTube /
+      # filecloud / games-site / modmanager / convertit / 503-1 / 503-2.
+      # The default below therefore applies only to a stack deployed OUTSIDE
+      # that pipeline — which is why every node served the same page until it
+      # existed.
+      # Long-form bind with create_host_path: false so a mistyped CAMO_SITE
+      # errors at deploy instead of silently mounting an empty dir (which would
+      # break the camouflage page and fingerprint the node).
+      - type: bind
+        source: ./www/${CAMO_SITE:-converter}
+        target: /var/www/html
+        read_only: true
+        bind:
+          create_host_path: false
+    command: sh -c 'rm -f /dev/shm/nginx.sock && exec angie -g "daemon off;"'
+
+  remnanode:
+    image: ghcr.io/remnawave/node:2.8.0
+    container_name: remnanode
+    hostname: remnanode
+    <<: [*common, *logging]
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - NODE_PORT=2222
+      # Secret — NOT stored in git. Provide via Dockhand secret env (or .env).
+      - SECRET_KEY=${SECRET_KEY}
+    volumes:
+      - /dev/shm:/dev/shm:rw
+
+volumes:
+  # Create once per host: docker volume create angie-acme
+  angie-acme:
+    external: true

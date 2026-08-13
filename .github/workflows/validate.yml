@@ -1,0 +1,115 @@
+---
+# Validate ALL compose stacks: every */docker-compose.yml is schema-checked and
+# every */angie.conf is loaded with angie -t. New stack folders are picked up
+# automatically — no per-stack edits here.
+name: Validate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "30 6 * * 1"   # weekly bit-rot check (Mon 06:30 UTC)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  stack-guards:
+    name: stack-guards
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Run the stack guards
+        run: bash .github/scripts/stack-guards.sh
+
+  angie-config:
+    name: angie -t (all stacks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Generate a dummy TLS cert (so -t can load ssl_certificate)
+        run: |
+          mkdir -p certs
+          openssl req -x509 -newkey rsa:2048 -nodes -days 1 \
+            -keyout certs/privkey.pem -out certs/fullchain.pem \
+            -subj "/CN=ci.example.com"
+
+      - name: Validate every angie.conf
+        run: |
+          set -euo pipefail
+          found=0
+          for conf in */angie.conf; do
+            [ -e "$conf" ] || continue
+            found=1
+            echo "== $conf =="
+            # angie.conf may be a gomplate template (e.g. {{ .Env.ACME_DOMAIN }}).
+            # Mount it into the templates input dir and let the templated image's
+            # entrypoint render it (gomplate) before angie -t validates the result.
+            docker run --rm \
+              -e ANGIE_FEATURE_TEMPLATE=on \
+              -e ACME_DOMAIN=ci.example.com \
+              -e NODE_NAME=ci \
+              -v "$PWD/$conf:/etc/angie/templates/http.d/default.conf:ro" \
+              -v "$PWD/certs/fullchain.pem:/etc/angie/ssl/example.com/fullchain.pem:ro" \
+              -v "$PWD/certs/privkey.pem:/etc/angie/ssl/example.com/privkey.pem:ro" \
+              docker.angie.software/angie:templated angie -t
+          done
+          [ "$found" = 1 ] || echo "No angie.conf files found — nothing to check."
+
+  compose-config:
+    name: docker compose config (all stacks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Validate every compose file
+        env:
+          SECRET_KEY: dummy
+          ACME_DOMAIN: dummy
+          NODE_NAME: dummy
+        run: |
+          set -euo pipefail
+          found=0
+          for f in */docker-compose.yml; do
+            [ -e "$f" ] || continue
+            found=1
+            echo "== $f =="
+            docker compose -f "$f" config -q
+          done
+          [ "$found" = 1 ] || { echo "::error::no compose files found"; exit 1; }
+
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read   # gitleaks-action lists PR commits on pull_request events
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Lint workflow files
+        run: |
+          bash <(curl -fsSL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash)
+          ./actionlint -color

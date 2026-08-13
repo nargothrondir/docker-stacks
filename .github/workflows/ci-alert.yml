@@ -1,0 +1,98 @@
+---
+# Telegram notifications for CI/CD workflow runs.
+# Add workflow names to `workflows` below when new CI/CD workflows are added.
+# Required repository secrets: TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
+# Optional repository secret: TELEGRAM_TOPIC_ID
+name: CI Alert
+
+on:
+  workflow_run:
+    # Keep this list explicit: otherwise CI Alert could notify about itself.
+    workflows: ["Validate"]
+    # `completed` only, deliberately. Notifying on `in_progress` too doubled
+    # the number of runs — and since every job is billed rounded up to a full
+    # minute, these notifications had become a top consumer of the Actions
+    # quota. "Build started" is noise for a single operator; the result is the
+    # signal.
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  telegram:
+    name: Telegram notification
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Telegram notification
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TOPIC_ID: ${{ secrets.TELEGRAM_TOPIC_ID }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          REPOSITORY: ${{ github.repository }}
+          WORKFLOW: ${{ github.event.workflow_run.name }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          COMMIT_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
+        run: |
+          set -euo pipefail
+
+          : "${TOKEN:?TELEGRAM_BOT_TOKEN is not configured}"
+          : "${CHAT_ID:?TELEGRAM_CHAT_ID is not configured}"
+
+          # Telegram HTML requires escaping values originating from GitHub.
+          escape_html() {
+            sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
+          }
+
+          repository="$(printf '%s' "${REPOSITORY}" | escape_html)"
+          workflow="$(printf '%s' "${WORKFLOW}" | escape_html)"
+          branch="$(printf '%s' "${BRANCH:-—}" | escape_html)"
+          commit_message="$(printf '%s' "${COMMIT_MESSAGE:-—}" | tr '\r\n' '  ' | cut -c1-1000 | escape_html)"
+          commit_url="https://github.com/${REPOSITORY}/commit/${SHA}"
+
+          case "${CONCLUSION}" in
+            success)
+              icon="✅"
+              title="${WORKFLOW} build finished"
+              ;;
+            failure)
+              icon="❌"
+              title="${WORKFLOW} build failed"
+              ;;
+            cancelled)
+              icon="⚪"
+              title="${WORKFLOW} build cancelled"
+              ;;
+            skipped)
+              icon="⚪"
+              title="${WORKFLOW} build skipped"
+              ;;
+            *)
+              icon="⚠️"
+              title="${WORKFLOW} build finished: ${CONCLUSION:-unknown}"
+              ;;
+          esac
+
+          title="$(printf '%s' "${title}" | escape_html)"
+          text="<b>${icon} ${title}</b>
+
+          📦 <b>Repository:</b> ${repository}
+          🏹 <b>Workflow:</b> ${workflow}
+          🌿 <b>Branch:</b> ${branch}
+          🔨 <b>Commit Message:</b> ${commit_message}"
+
+          payload="$(jq -n \
+            --arg chat_id "${CHAT_ID}" \
+            --arg text "${text}" \
+            --arg commit_url "${commit_url}" \
+            --arg topic_id "${TOPIC_ID:-}" \
+            '{chat_id: $chat_id, text: $text, parse_mode: "HTML", disable_web_page_preview: true,
+              reply_markup: {inline_keyboard: [[{text: "↗ Link to commit", url: $commit_url}] ]}}
+             | if $topic_id != "" then .message_thread_id = $topic_id else . end')"
+
+          curl --fail-with-body --silent --show-error \
+            -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+            -H 'Content-Type: application/json' \
+            --data "${payload}"

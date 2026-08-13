@@ -1,0 +1,50 @@
+# Semaphore (Ansible web UI) — Dockhand From-Git stack for the Panel env.
+#
+# Volumes are EXTERNAL and point at the exact volumes created by the original
+# Ansible deployment (compose project "semaphore"), so the migration keeps all
+# data (projects, Key Store, task history). Do NOT rename them.
+#
+# Secrets (Dockhand secret env vars): SEMAPHORE_ADMIN_PASSWORD,
+# SEMAPHORE_ACCESS_KEY_ENCRYPTION (base64 32 bytes).
+#
+# roles/semaphore in ansible-playbooks remains the disaster-recovery path.
+services:
+  semaphore:
+    image: semaphoreui/semaphore:v2.19.7
+    container_name: semaphore
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3030:3000"
+    environment:
+      SEMAPHORE_DB_DIALECT: sqlite
+      SEMAPHORE_DB_HOST: /var/lib/semaphore/database.sqlite
+      SEMAPHORE_ADMIN: admin
+      SEMAPHORE_ADMIN_PASSWORD: ${SEMAPHORE_ADMIN_PASSWORD}
+      SEMAPHORE_ADMIN_NAME: Admin
+      SEMAPHORE_ADMIN_EMAIL: admin@localhost
+      SEMAPHORE_ACCESS_KEY_ENCRYPTION: ${SEMAPHORE_ACCESS_KEY_ENCRYPTION}
+    volumes:
+      - semaphore_data:/var/lib/semaphore
+      - semaphore_config:/etc/semaphore
+      - semaphore_tmp:/tmp/semaphore
+    # Reaches OpenBao by service name (http://openbao:8200). Semaphore reads
+    # secrets on behalf of playbooks, so it is the client that needs the API —
+    # and OpenBao publishes only on the host's loopback, which a container
+    # cannot reach. Created by roles/openbao, hence external here.
+    networks:
+      - openbao-net
+
+networks:
+  openbao-net:
+    external: true
+
+volumes:
+  semaphore_data:
+    external: true
+    name: semaphore_semaphore_data
+  semaphore_config:
+    external: true
+    name: semaphore_semaphore_config
+  semaphore_tmp:
+    external: true
+    name: semaphore_semaphore_tmp

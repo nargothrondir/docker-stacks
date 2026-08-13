@@ -1,0 +1,8 @@
+# Throwaway stack for validating the From-Git pipeline to a REMOTE host via
+# Hawser (git -> Dockhand -> Hawser -> node docker). No published ports, no
+# volumes — safe to deploy anywhere and delete afterwards (issue #12).
+services:
+  test-fromgit:
+    image: nginx:1.31-alpine
+    container_name: test-fromgit
+    restart: unless-stopped
