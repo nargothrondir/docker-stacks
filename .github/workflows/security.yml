@@ -1,0 +1,40 @@
+---
+# CI: secret scanning. Mirrors ansible-playbooks/.github/workflows/security.yml
+# minus its vault-guard job — there is no ansible-vault in this repository.
+# Secrets here are Dockhand secret env vars referenced as ${VAR} in compose, so
+# what this guards against is a value pasted in place of the reference.
+name: Security
+
+on:
+  # `push` is restricted to main, `pull_request` covers everything else.
+  # Without the branches filter BOTH fire for a push to a branch with an open
+  # PR, so every job runs twice and every job is billed rounded UP to a full
+  # minute — duplication is the expensive kind of waste here, not slowness.
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "45 6 * * 1"   # weekly bit-rot check (Mon 06:45 UTC)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read   # gitleaks-action lists PR commits on pull_request events
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
