@@ -20,7 +20,7 @@
 # a real secret and lives only there (0600, no_log), never in this file.
 services:
   hawser:
-    image: ghcr.io/finsys/hawser:0.2.45
+    image: ghcr.io/finsys/hawser:0.2.46
     container_name: hawser
     restart: unless-stopped
     labels:
