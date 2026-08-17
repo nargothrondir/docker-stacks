@@ -10,7 +10,7 @@
 # roles/semaphore in ansible-playbooks remains the disaster-recovery path.
 services:
   semaphore:
-    image: semaphoreui/semaphore:v2.19.7
+    image: semaphoreui/semaphore:v2.19.8
     container_name: semaphore
     restart: unless-stopped
     ports:
