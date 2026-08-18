@@ -51,10 +51,15 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          # Kept in step with the toolchain in the Dockerfile and the version in
-          # go.mod. A mismatch here would let CI pass on a language feature the
-          # image cannot compile.
-          go-version: '1.26'
+          # Pinned to the patch, and kept in step with the builder stage in the
+          # Dockerfile. go.mod carries the language version (1.26); these two
+          # carry the toolchain, because the toolchain is what govulncheck
+          # judges — '1.26' resolved to 1.26.5 and the scan found five reachable
+          # standard-library vulnerabilities fixed in 1.26.6.
+          #
+          # This is the loop working as intended: pin exactly, and let the scan
+          # say when the pin has gone stale.
+          go-version: '1.26.6'
           cache: false
 
       - name: Check formatting
