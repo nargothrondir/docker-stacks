@@ -8,7 +8,7 @@ name: CI Alert
 on:
   workflow_run:
     # Keep this list explicit: otherwise CI Alert could notify about itself.
-    workflows: ["Validate"]
+    workflows: ["Validate", "acme-hook"]
     # `completed` only, deliberately. Notifying on `in_progress` too doubled
     # the number of runs — and since every job is billed rounded up to a full
     # minute, these notifications had become a top consumer of the Actions

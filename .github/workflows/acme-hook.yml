@@ -1,0 +1,103 @@
+---
+# CI: build the acme-hook binary and publish its image.
+#
+# This is the only compiled artifact in the fleet, so it is also the only place
+# where a syntax error cannot be caught by reading the file — the build IS the
+# check. gofmt and vet run first because they name the problem, while a failed
+# compile inside a Docker layer names a line number and little else.
+#
+# Publishing happens on main only. A pull request builds without pushing, so a
+# broken change never produces an image a node could pull.
+#
+# Do NOT mark this workflow as a required check: it is path-filtered, so a pull
+# request that touches nothing under remnanode/acme-hook/ never runs it and
+# would wait forever for a check that cannot start.
+name: acme-hook
+
+on:
+  # `push` restricted to main, `pull_request` covers everything else. Without the
+  # filter BOTH fire for a push to a branch with an open PR, and every job is
+  # billed rounded up to a full minute.
+  push:
+    branches: [main]
+    paths:
+      - 'remnanode/acme-hook/**'
+      - '.github/workflows/acme-hook.yml'
+  pull_request:
+    paths:
+      - 'remnanode/acme-hook/**'
+      - '.github/workflows/acme-hook.yml'
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/acme-hook
+
+jobs:
+  build:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Needed only by the publish step; harmless on a pull request, which
+      # never reaches it.
+      packages: write
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          # Kept in step with the toolchain in the Dockerfile and the version in
+          # go.mod. A mismatch here would let CI pass on a language feature the
+          # image cannot compile.
+          go-version: '1.23'
+          cache: false
+
+      - name: Check formatting
+        working-directory: remnanode/acme-hook
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "::error::gofmt would rewrite: $unformatted"
+            gofmt -d .
+            exit 1
+          fi
+          echo "gofmt: clean"
+
+      - name: Vet
+        working-directory: remnanode/acme-hook
+        run: go vet ./...
+
+      - name: Build
+        working-directory: remnanode/acme-hook
+        run: CGO_ENABLED=0 go build -trimpath -o /tmp/acme-hook .
+
+      - name: Log in to ghcr.io
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the image
+        if: github.event_name == 'push'
+        uses: docker/build-push-action@v6
+        with:
+          context: remnanode/acme-hook
+          push: true
+          # Both tags move; the compose file pins by digest, which does not.
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+
+      - name: Report the digest to pin
+        if: github.event_name == 'push'
+        run: |
+          echo "Pin this in remnanode/docker-compose.yml:"
+          docker buildx imagetools inspect "$IMAGE:${{ github.sha }}" \
+            --format '{{.Manifest.Digest}}' || true

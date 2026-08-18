@@ -38,6 +38,53 @@ it across redeploys, or every deploy burns a duplicate-certificate slot.
 Do not clear it on a live node: the config serves the certificate *from* the
 volume, so an empty volume means no TLS until issuance completes.
 
+## The DNS-01 hook
+
+Angie has no built-in DNS provider, so the challenge is answered by a small
+service in `acme-hook/`. It creates and deletes the `_acme-challenge` TXT record
+through the Cloudflare API, and it is the container that holds `CF_API_TOKEN`.
+
+It exists twice on purpose:
+
+| | |
+|---|---|
+| `acme-hook.py` | the original. A stock `python:3.14-slim` image with the script bind-mounted — no image to build, and the standard library covers the whole job |
+| `acme-hook/` | a Go port of the same behaviour, built into a `distroless/static` image |
+
+The reason for the port is the image, not the language. `python:3.14-slim`
+carries an interpreter, a package manager, a shell and a userland; a static Go
+binary in distroless carries none of them. For the one container on the node
+holding a Cloudflare token, that difference is the whole argument — the Go
+version brings no dependencies of its own, so nothing else changes.
+
+The cost is a build pipeline where there was none. CI compiles on every pull
+request touching `acme-hook/` and publishes to `ghcr.io/nargothrondir/acme-hook`
+on merge; the compose file then pins a digest, exactly as it pins the Python
+image today.
+
+**`acme-hook.py` stays until the Go version has renewed a real certificate.**
+Renewal happens at 60 days, so a fault would otherwise surface long after the
+change that caused it. Reverting is a one-block edit of the compose file.
+
+### Exercising it without waiting for a renewal
+
+The hook is driven entirely by request headers, so it can be called directly —
+no ACME involved. On the node, against the running container:
+
+```bash
+curl -si -X GET http://127.0.0.1:9001/healthz | head -1
+```
+
+```bash
+curl -si -X GET http://127.0.0.1:9001/   -H 'X-Acme-Op: add'   -H 'X-Acme-Domain: <the node name>.<the zone>'   -H 'X-Acme-Keyauth: test-value-please-delete' | head -1
+```
+
+A `200` and a TXT record appearing in Cloudflare at
+`_acme-challenge.<the node name>.<the zone>` means add works; the same call with
+`X-Acme-Op: remove` and the identical keyauth value must make it disappear.
+Anything outside the zone must be refused — that guard is what stops a caller
+steering a challenge at a name the node has no business proving.
+
 ## Reality camouflage
 
 The decoy site is bundled in the stack under `www/` and mounted read-only at
