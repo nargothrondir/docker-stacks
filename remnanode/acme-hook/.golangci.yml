@@ -21,3 +21,19 @@ linters:
     # Comparing errors with == instead of errors.Is silently stops working the
     # moment an error is wrapped, and this code wraps with %w.
     - errorlint
+
+  exclusions:
+    rules:
+      # G706 flags the three log lines that print the challenge record name,
+      # because it is derived from the X-Acme-Domain header and the taint
+      # analysis is flow-insensitive: it cannot see that every path to those
+      # lines passes through checkDomain, whose isDNSName gate makes a line
+      # break impossible. TestCheckDomain covers exactly that, including the
+      # newline case, so the claim is checked rather than asserted.
+      #
+      # The values are also printed with %q, which escapes a break even if the
+      # gate were ever weakened. Remove this exclusion if either goes away.
+      - path: main\.go
+        linters:
+          - gosec
+        text: G706
