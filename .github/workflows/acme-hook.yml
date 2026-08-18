@@ -54,7 +54,7 @@ jobs:
           # Kept in step with the toolchain in the Dockerfile and the version in
           # go.mod. A mismatch here would let CI pass on a language feature the
           # image cannot compile.
-          go-version: '1.23'
+          go-version: '1.26'
           cache: false
 
       - name: Check formatting
