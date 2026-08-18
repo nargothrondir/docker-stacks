@@ -13,14 +13,27 @@ x-logging: &logging
       max-file: 5
 
 services:
-  # Cloudflare DNS-01 hook backend for Angie native ACME (issue #13). Stock
-  # python image, script bind-mounted (no image to build/pin). Localhost only;
-  # host network so the host-networked Angie reaches it on 127.0.0.1:9001.
+  # Cloudflare DNS-01 hook backend for Angie native ACME (issue #13). Localhost
+  # only; host network so the host-networked Angie reaches it on 127.0.0.1:9001.
   # CF_API_TOKEN is a Dockhand secret env — never committed.
+  #
+  # Built from remnanode/acme-hook/ by .github/workflows/acme-hook.yml. It used
+  # to be a stock python image with acme-hook.py bind-mounted, which meant this
+  # container — the only one on the node holding a Cloudflare token — also
+  # carried an interpreter, a package manager and a shell. The image now holds
+  # one static binary and the CA certificates it needs.
+  #
+  # ROLLBACK: put back
+  #   image: python:3.14-slim@sha256:ce40764625a4ff50df3548277632e7f96c4e77fe75fa848aae9885476e7df5a4
+  #   volumes: [./acme-hook.py:/acme-hook.py:ro]
+  #   command: python3 /acme-hook.py
+  # and the python healthcheck below. acme-hook.py is kept in this directory for
+  # exactly that, until the Go version has renewed a real certificate.
   acme-hook:
-    # Pinned by digest (Renovate bumps it): the token-holding container must be
-    # reproducible across the fleet, not a rolling -slim tag.
-    image: python:3.14-slim@sha256:ce40764625a4ff50df3548277632e7f96c4e77fe75fa848aae9885476e7df5a4
+    # Pinned by digest: the token-holding container must be reproducible across
+    # the fleet, not a rolling tag. Bump this when the image is rebuilt — the
+    # publish job prints the digest to paste here.
+    image: ghcr.io/nargothrondir/acme-hook@sha256:0b6bfa69aaee0b9c71350904a6c8acb2c58ac5e489394e2970ae13d23bb3ca0c
     container_name: acme-hook
     hostname: acme-hook
     <<: [*common, *logging]
@@ -32,12 +45,13 @@ services:
       # from the per-node name — tracked on #21.)
       - CF_ZONE=${ACME_DOMAIN:?ACME_DOMAIN must be set (Dockhand env)}
       - HOOK_PORT=9001
-    volumes:
-      - ./acme-hook.py:/acme-hook.py:ro
-    command: python3 /acme-hook.py
+    # No bind mount and no command: the program IS the image now.
     healthcheck:
-      test: ["CMD", "python3", "-c",
-             "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9001/healthz', timeout=3)"]
+      # The binary probes itself, because a distroless image has no shell and no
+      # interpreter to probe it with. The check deliberately needs no token, so
+      # a missing secret stays a loud startup failure rather than an unhealthy
+      # container.
+      test: ["CMD", "/acme-hook", "-healthcheck"]
       interval: 30s
       timeout: 5s
       retries: 3

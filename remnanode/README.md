@@ -48,8 +48,8 @@ It exists twice on purpose:
 
 | | |
 |---|---|
-| `acme-hook.py` | the original. A stock `python:3.14-slim` image with the script bind-mounted — no image to build, and the standard library covers the whole job |
-| `acme-hook/` | a Go port of the same behaviour, built into a `distroless/static` image |
+| `acme-hook/` | **deployed.** A Go port built into a `distroless/static` image — one static binary and the CA certificates it needs |
+| `acme-hook.py` | the original, kept as the way back. A stock `python:3.14-slim` image with the script bind-mounted |
 
 The reason for the port is the image, not the language. `python:3.14-slim`
 carries an interpreter, a package manager, a shell and a userland; a static Go
@@ -57,10 +57,11 @@ binary in distroless carries none of them. For the one container on the node
 holding a Cloudflare token, that difference is the whole argument — the Go
 version brings no dependencies of its own, so nothing else changes.
 
-The cost is a build pipeline where there was none. CI compiles on every pull
-request touching `acme-hook/` and publishes to `ghcr.io/nargothrondir/acme-hook`
-on merge; the compose file then pins a digest, exactly as it pins the Python
-image today.
+The cost is a build pipeline where there was none. CI compiles, lints, scans for
+known vulnerabilities and runs the tests on every pull request touching
+`acme-hook/`, then publishes to `ghcr.io/nargothrondir/acme-hook` on merge and
+prints the digest to pin. The compose file pins that digest, exactly as it pinned
+the Python image before.
 
 **`acme-hook.py` stays until the Go version has renewed a real certificate.**
 Renewal happens at 60 days, so a fault would otherwise surface long after the
