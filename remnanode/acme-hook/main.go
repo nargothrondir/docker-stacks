@@ -285,8 +285,7 @@ func checkDomain(domain string) error {
 	// The domain arrives in a header and ends up in a log line and in a
 	// Cloudflare record name, so it is constrained to what a DNS name may
 	// contain. Without this, a newline in the header forges log entries — the
-	// zone check alone does not stop it, since "evil
-FAKE.example.com" is still
+	// zone check alone does not stop it: a name carrying a line break is still
 	// inside the zone as far as a suffix test is concerned.
 	if !isDNSName(domain) {
 		return fmt.Errorf("domain is not a DNS name: %q", domain)
