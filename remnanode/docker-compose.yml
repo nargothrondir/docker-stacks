@@ -31,9 +31,14 @@ services:
   # exactly that, until the Go version has renewed a real certificate.
   acme-hook:
     # Pinned by digest: the token-holding container must be reproducible across
-    # the fleet, not a rolling tag. Bump this when the image is rebuilt — the
-    # publish job prints the digest to paste here.
-    image: ghcr.io/nargothrondir/acme-hook@sha256:0b6bfa69aaee0b9c71350904a6c8acb2c58ac5e489394e2970ae13d23bb3ca0c
+    # the fleet, not a rolling tag. The digest is what decides what runs — the
+    # :latest in front of it is never resolved by Docker when a digest follows.
+    #
+    # It is there for Renovate. A bare digest gives the bot nothing to watch, so
+    # a rebuilt image would go unannounced; anchored to a tag, it can offer the
+    # bump the way it does for every other image here. The publish job prints
+    # the digest to paste in.
+    image: ghcr.io/nargothrondir/acme-hook:latest@sha256:0b6bfa69aaee0b9c71350904a6c8acb2c58ac5e489394e2970ae13d23bb3ca0c
     container_name: acme-hook
     hostname: acme-hook
     <<: [*common, *logging]
