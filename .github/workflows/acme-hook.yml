@@ -72,6 +72,31 @@ jobs:
         working-directory: remnanode/acme-hook
         run: go vet ./...
 
+      # Three checks from three different angles, none of which duplicates the
+      # compiler: the linters read the code, govulncheck reads the vulnerability
+      # database, and the tests read the behaviour.
+      - name: Lint
+        uses: golangci/golangci-lint-action@v9
+        with:
+          version: v2.12.2
+          working-directory: remnanode/acme-hook
+
+      # There are no dependencies here, so this is really a check on the Go
+      # standard library: it reports when the toolchain in use has a known
+      # vulnerability that this code actually reaches. For the one container
+      # holding a Cloudflare token, that is the check worth having.
+      - name: Vulnerability scan
+        working-directory: remnanode/acme-hook
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.7.0
+          "$(go env GOPATH)/bin/govulncheck" ./...
+
+      # -race is close to free here and would catch a regression in the zone-id
+      # cache, which is the only shared state in the program.
+      - name: Test
+        working-directory: remnanode/acme-hook
+        run: go test -race -v ./...
+
       - name: Build
         working-directory: remnanode/acme-hook
         run: CGO_ENABLED=0 go build -trimpath -o /tmp/acme-hook .

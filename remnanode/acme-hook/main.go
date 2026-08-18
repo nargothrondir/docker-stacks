@@ -22,6 +22,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -80,7 +81,9 @@ func cf(method, path string, body any) (json.RawMessage, error) {
 		payload = bytes.NewReader(encoded)
 	}
 
-	req, err := http.NewRequest(method, cfAPI+path, payload)
+	// Carries a context because every outbound call should be cancellable in
+	// principle; the deadline that actually applies is the client timeout above.
+	req, err := http.NewRequestWithContext(context.Background(), method, cfAPI+path, payload)
 	if err != nil {
 		return nil, err
 	}
@@ -251,28 +254,42 @@ func remove(zid, name, value string) error {
 	return nil
 }
 
-func dispatch(op, domain, keyauth string) error {
+// checkDomain keeps a caller from steering a challenge at a name this node has
+// no business proving — the control plane, say. It is a separate function so it
+// can be tested without a Cloudflare round-trip: the decision and the I/O are
+// worth keeping apart, and this guard is one of the three security properties
+// of the whole service.
+func checkDomain(domain string) error {
 	if domain == "" {
 		return fmt.Errorf("missing X-Acme-Domain")
 	}
-	// Only ever touch records inside our own zone — never let a caller steer a
-	// challenge for an arbitrary host (e.g. the control plane).
 	if domain != zone && !strings.HasSuffix(domain, "."+zone) {
 		return fmt.Errorf("domain outside zone %s: %s", zone, domain)
 	}
+	return nil
+}
+
+func dispatch(op, domain, keyauth string) error {
+	// Everything that can be refused without talking to anyone is refused first.
+	// The op used to be checked after the zone lookup, which meant a malformed
+	// request cost a Cloudflare round-trip before being thrown away — and made
+	// the guard untestable without credentials.
+	if op != "add" && op != "remove" {
+		return fmt.Errorf("unknown op: %s", op)
+	}
+	if err := checkDomain(domain); err != nil {
+		return err
+	}
+
 	zid, err := zoneIdentifier()
 	if err != nil {
 		return err
 	}
 	name := recordName(domain)
-	switch op {
-	case "add":
+	if op == "add" {
 		return add(zid, name, keyauth)
-	case "remove":
-		return remove(zid, name, keyauth)
-	default:
-		return fmt.Errorf("unknown op: %s", op)
 	}
+	return remove(zid, name, keyauth)
 }
 
 // handle answers any method. Angie's internal acme_hook request arrives as a GET
@@ -307,7 +324,13 @@ func handle(w http.ResponseWriter, r *http.Request) {
 // It deliberately does NOT require the token: a missing secret must stay a fatal
 // startup error with a clear message, not degrade into an unhealthy container.
 func healthcheck() {
-	resp, err := (&http.Client{Timeout: 3 * time.Second}).Get("http://" + addr + "/healthz")
+	req, err := http.NewRequestWithContext(context.Background(),
+		http.MethodGet, "http://"+addr+"/healthz", nil)
+	if err != nil {
+		log.Printf("ERROR healthcheck: %v", err)
+		os.Exit(1)
+	}
+	resp, err := (&http.Client{Timeout: 3 * time.Second}).Do(req)
 	if err != nil {
 		log.Printf("ERROR healthcheck: %v", err)
 		os.Exit(1)
