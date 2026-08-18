@@ -44,6 +44,14 @@ func TestCheckDomain(t *testing.T) {
 		{"the zone as a prefix of another", "example.com.evil.net", true},
 		// And the mirror case: a suffix match without the dot boundary.
 		{"a longer label ending in the zone", "notexample.com", true},
+
+		// A newline inside an otherwise in-zone name. The suffix test alone lets
+		// this through, and the value reaches a log line — which is how a caller
+		// would forge journal entries (gosec G706).
+		{"a newline smuggled into the name", "evil
+FAKE.example.com", true},
+		{"a space in the name", "not a host.example.com", true},
+		{"an underscore in the name", "under_score.example.com", true},
 	}
 
 	for _, tc := range cases {

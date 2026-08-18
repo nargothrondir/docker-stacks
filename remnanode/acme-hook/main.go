@@ -94,7 +94,7 @@ func cf(method, path string, body any) (json.RawMessage, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var parsed struct {
 		Success bool            `json:"success"`
@@ -208,7 +208,7 @@ func purge(zid, name string) error {
 		if _, err := cf("DELETE", "/zones/"+zid+"/dns_records/"+rec.ID, nil); err != nil {
 			return err
 		}
-		log.Printf("INFO purged stale TXT %s", name)
+		log.Printf("INFO purged stale TXT %q", name)
 	}
 	return nil
 }
@@ -225,7 +225,7 @@ func add(zid, name, value string) error {
 	if _, err := cf("POST", "/zones/"+zid+"/dns_records", body); err != nil {
 		return err
 	}
-	log.Printf("INFO added TXT %s (waiting %s for propagation)", name, addDelay)
+	log.Printf("INFO added TXT %q (waiting %s for propagation)", name, addDelay)
 	time.Sleep(addDelay)
 	return nil
 }
@@ -249,9 +249,28 @@ func remove(zid, name, value string) error {
 		if _, err := cf("DELETE", "/zones/"+zid+"/dns_records/"+rec.ID, nil); err != nil {
 			return err
 		}
-		log.Printf("INFO removed TXT %s", name)
+		log.Printf("INFO removed TXT %q", name)
 	}
 	return nil
+}
+
+// isDNSName reports whether s contains only what a DNS name may contain. Case
+// is allowed through unchanged: the zone comparison below is case-sensitive, so
+// a differently-cased name is refused there rather than silently normalised.
+func isDNSName(s string) bool {
+	if len(s) > 253 {
+		return false
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '-', r == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // checkDomain keeps a caller from steering a challenge at a name this node has
@@ -262,6 +281,15 @@ func remove(zid, name, value string) error {
 func checkDomain(domain string) error {
 	if domain == "" {
 		return fmt.Errorf("missing X-Acme-Domain")
+	}
+	// The domain arrives in a header and ends up in a log line and in a
+	// Cloudflare record name, so it is constrained to what a DNS name may
+	// contain. Without this, a newline in the header forges log entries — the
+	// zone check alone does not stop it, since "evil
+FAKE.example.com" is still
+	// inside the zone as far as a suffix test is concerned.
+	if !isDNSName(domain) {
+		return fmt.Errorf("domain is not a DNS name: %q", domain)
 	}
 	if domain != zone && !strings.HasSuffix(domain, "."+zone) {
 		return fmt.Errorf("domain outside zone %s: %s", zone, domain)
@@ -309,7 +337,7 @@ func handle(w http.ResponseWriter, r *http.Request) {
 	if err := dispatch(op, domain, r.Header.Get("X-Acme-Keyauth")); err != nil {
 		// Loud logging is the whole point (#13 risk): a silent hook failure
 		// surfaces only as a certificate that quietly stopped renewing.
-		log.Printf("ERROR op=%s domain=%s failed: %v", op, domain, err)
+		log.Printf("ERROR op=%q domain=%q failed: %v", op, domain, err)
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -335,7 +363,7 @@ func healthcheck() {
 		log.Printf("ERROR healthcheck: %v", err)
 		os.Exit(1)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("ERROR healthcheck: status %d", resp.StatusCode)
 		os.Exit(1)
