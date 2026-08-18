@@ -48,8 +48,7 @@ func TestCheckDomain(t *testing.T) {
 		// A newline inside an otherwise in-zone name. The suffix test alone lets
 		// this through, and the value reaches a log line — which is how a caller
 		// would forge journal entries (gosec G706).
-		{"a newline smuggled into the name", "evil
-FAKE.example.com", true},
+		{"a newline smuggled into the name", "evil\nFAKE.example.com", true},
 		{"a space in the name", "not a host.example.com", true},
 		{"an underscore in the name", "under_score.example.com", true},
 	}
