@@ -86,6 +86,66 @@ A `200` and a TXT record appearing in Cloudflare at
 Anything outside the zone must be refused — that guard is what stops a caller
 steering a challenge at a name the node has no business proving.
 
+## A change to angie.conf does not reach a running node on its own
+
+Measured 2026-08-19, and it is the least obvious thing about this stack.
+
+`angie.conf` is bind-mounted into the templates directory, and the `-templated`
+image renders it with gomplate **at container start**:
+
+```
+./angie.conf → /etc/angie/templates/http.d/default.conf → (gomplate) → /etc/angie/…
+```
+
+So editing it and redeploying does nothing visible. Dockhand writes the new file
+to disk, `docker compose up` compares the service definition, finds it unchanged
+and leaves the container running — and inside that container the rendered
+configuration is still the old one, because gomplate has not run since it
+started.
+
+The deploy reports success. The node keeps its previous behaviour.
+
+**Restart the container to apply a configuration change:**
+
+```bash
+docker restart remnawave-angie
+```
+
+`angie -s reload` is not enough: it re-reads the *rendered* file, which is the
+stale one.
+
+A change to `docker-compose.yml` does not have this problem — that is a change
+to the service definition, so compose recreates the container and gomplate runs.
+Only config-file edits are affected, which is exactly the case where nothing
+looks wrong.
+
+## Forcing a certificate renewal, for testing
+
+`acme_client` takes a `renew_on_load` flag: *"the certificate should be forcibly
+renewed each time the configuration is loaded."* Add it, restart the container,
+and issuance runs immediately — through the DNS-01 hook, end to end.
+
+Nothing needs to be wiped. The account key and the current certificate stay in
+the `angie-acme` volume and the new certificate arrives over them, so there is
+no window without TLS.
+
+Three things to know before using it:
+
+- **It fires on every configuration load, not once.** Used on 2026-08-19 it
+  produced two certificates seven minutes apart, because the configuration was
+  loaded twice. Let's Encrypt allows five duplicate certificates per week for one
+  name set.
+- **Remove it from a branch cut from `main`.** The first revert was branched from
+  the branch that added the flag; squash-merging collapsed both commits into one
+  with no net change, the pull request merged green, and the flag stayed live.
+- **Removing it needs the same restart** as adding it. That restart is safe: it
+  renders the flag-free configuration, so it does not issue.
+
+Verified this way on 2026-08-19: the certificate moved from 2026-08-12 to
+2026-08-19 02:01 UTC. A certificate cannot be re-issued without the DNS-01
+record, and that record is created by the Go hook — which is how Angie calling
+the hook was proven rather than assumed.
+
 ## Reality camouflage
 
 The decoy site is bundled in the stack under `www/` and mounted read-only at
