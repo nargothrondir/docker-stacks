@@ -59,7 +59,7 @@ jobs:
           #
           # This is the loop working as intended: pin exactly, and let the scan
           # say when the pin has gone stale.
-          go-version: '1.26.6'
+          go-version: '1.27.0'
           cache: false
 
       - name: Check formatting
