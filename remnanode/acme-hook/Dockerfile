@@ -5,7 +5,7 @@
 # Build locally with:  docker build -t acme-hook remnanode/acme-hook
 # CI does the same and publishes to ghcr.io — see .github/workflows/acme-hook.yml
 
-FROM golang:1.26.6-alpine AS build
+FROM golang:1.27.0-alpine AS build
 
 WORKDIR /src
 
