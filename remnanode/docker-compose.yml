@@ -72,7 +72,7 @@ services:
     # /etc/angie/templates -> output-dir /etc/angie). Lets the domain come from
     # ${ACME_DOMAIN} instead of being hardcoded. gomplate uses {{ }} delimiters,
     # so Angie's own $variables are untouched.
-    image: docker.angie.software/angie:1.12.1-templated
+    image: docker.angie.software/angie:1.12.2-templated
     container_name: remnawave-angie
     hostname: remnawave-angie
     <<: [*common, *logging]
