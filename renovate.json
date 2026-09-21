@@ -3,5 +3,16 @@
   "extends": ["config:recommended"],
   "timezone": "UTC",
   "schedule": ["before 8am on monday"],
-  "labels": ["dependencies"]
+  "labels": ["dependencies"],
+  "packageRules": [
+    {
+      "description": "A remnawave/node major must not reach main on its own. Merging here is the deploy, and two things break at once: the panel runs 2.8 and has to move in step with the nodes, and node 3.x bundles Xray v26.7.28, whose default REALITY minClientVer (26.3.27) refuses Mihomo clients, which report 1.8.2. The upgrade is a planned project, tracked in ansible-playbooks-archive #85 and #176.",
+      "matchPackageNames": ["ghcr.io/remnawave/node"],
+      "matchUpdateTypes": ["major"],
+      "dependencyDashboardApproval": true,
+      "prBodyNotes": [
+        "**Do not merge this on its own.** The Remnawave panel must be upgraded in the same step, and the bundled Xray must accept Mihomo clients: set `\"minClientVer\": \"0.0.0\"` in the REALITY profile first, or use a node release on Xray v26.9.8 or later. Test on one node with a Mihomo client before the fleet. See ansible-playbooks-archive #85 and #176."
+      ]
+    }
+  ]
 }
