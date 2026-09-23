@@ -19,6 +19,7 @@ environment.
 | `ACME_DOMAIN` | no | the parent zone (e.g. `example.com`); required — deploy fails without it |
 | `NODE_NAME` | no | this node's short name (e.g. `pl`); required |
 | `CAMO_SITE` | no | which decoy site to serve; assigned per node by the provisioning pipeline, `converter` when unset |
+| `XHTTP_PATH` | **yes** | secret path of the xHTTP location (see [xHTTP](#xhttp)); set per node by the provisioning pipeline from OpenBao; empty = xHTTP off on this node |
 
 `ACME_DOMAIN` and `NODE_NAME` combine into `server_name
 <NODE_NAME>.<ACME_DOMAIN>`, so **each node issues a certificate for its own
@@ -145,6 +146,33 @@ Verified this way on 2026-08-19: the certificate moved from 2026-08-12 to
 2026-08-19 02:01 UTC. A certificate cannot be re-issued without the DNS-01
 record, and that record is created by the Go hook — which is how Angie calling
 the hook was proven rather than assumed.
+
+## xHTTP
+
+A second way in, next to reality: VLESS over xHTTP, sharing port 443.
+
+```
+client ──TLS──▶ :443 xray reality ──(not a reality handshake)──▶ Angie (nginx.sock)
+                                        ├─ XHTTP_PATH ──grpc_pass──▶ xray xHTTP inbound (xhttp.sock)
+                                        └─ anything else ──────────▶ decoy site
+```
+
+The client does ordinary TLS with this node's own certificate. Reality relays
+that handshake to Angie exactly as it relays a browser, so the node exposes no
+new port and the xHTTP traffic arrives as HTTPS to the decoy site's name.
+
+- **Enabled per node** by `XHTTP_PATH`. Unset, the location is not rendered
+  and the node behaves as before; that is what lets a merge here reach the
+  fleet without switching xHTTP on anywhere.
+- **The path is a secret.** It is the one request that answers differently
+  from the decoy site, so it is stored in OpenBao and set as a Dockhand secret.
+- **The inbound lives in the Remnawave config profile**, not here: it listens on
+  `/dev/shm/xhttp.sock`, has no TLS of its own, and must trust `X-Real-IP` in
+  `sockopt.trustedXForwardedFor` to see client addresses. The provisioning
+  playbooks in `ansible-playbooks` create it.
+- **`grpc_pass`, not `proxy_pass`**: it streams the request body instead of
+  buffering it first, so every xHTTP mode passes; see the comment in
+  `angie.conf`.
 
 ## Reality camouflage
 

@@ -51,14 +51,20 @@ jobs:
             # angie.conf may be a gomplate template (e.g. {{ .Env.ACME_DOMAIN }}).
             # Mount it into the templates input dir and let the templated image's
             # entrypoint render it (gomplate) before angie -t validates the result.
-            docker run --rm \
-              -e ANGIE_FEATURE_TEMPLATE=on \
-              -e ACME_DOMAIN=ci.example.com \
-              -e NODE_NAME=ci \
-              -v "$PWD/$conf:/etc/angie/templates/http.d/default.conf:ro" \
-              -v "$PWD/certs/fullchain.pem:/etc/angie/ssl/example.com/fullchain.pem:ro" \
-              -v "$PWD/certs/privkey.pem:/etc/angie/ssl/example.com/privkey.pem:ro" \
-              docker.angie.software/angie:templated angie -t
+            # Rendered twice: optional variables (XHTTP_PATH) gate whole blocks,
+            # and a block that is never rendered in CI is never checked.
+            for xhttp_path in "" "/ci-xhttp/"; do
+              echo "-- XHTTP_PATH='$xhttp_path' --"
+              docker run --rm \
+                -e ANGIE_FEATURE_TEMPLATE=on \
+                -e ACME_DOMAIN=ci.example.com \
+                -e NODE_NAME=ci \
+                -e XHTTP_PATH="$xhttp_path" \
+                -v "$PWD/$conf:/etc/angie/templates/http.d/default.conf:ro" \
+                -v "$PWD/certs/fullchain.pem:/etc/angie/ssl/example.com/fullchain.pem:ro" \
+                -v "$PWD/certs/privkey.pem:/etc/angie/ssl/example.com/privkey.pem:ro" \
+                docker.angie.software/angie:templated angie -t
+            done
           done
           [ "$found" = 1 ] || echo "No angie.conf files found — nothing to check."
 
