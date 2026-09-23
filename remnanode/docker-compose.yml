@@ -86,6 +86,10 @@ services:
       # itself, not a fleet-wide wildcard. ACME_DOMAIN stays the parent zone.
       - ACME_DOMAIN=${ACME_DOMAIN:?ACME_DOMAIN must be set (Dockhand env)}
       - NODE_NAME=${NODE_NAME:?NODE_NAME must be set (Dockhand env, e.g. pl)}
+      # The secret path of the xHTTP location in angie.conf. Optional on
+      # purpose: empty means this node does not serve xHTTP and the location
+      # is not rendered. Set per node from OpenBao by dockhand-stack.yml.
+      - XHTTP_PATH=${XHTTP_PATH:-}
     volumes:
       # Mounted into the templates INPUT dir; gomplate renders it to
       # /etc/angie/http.d/default.conf (which the main config includes).
