@@ -40,7 +40,8 @@ same reason, as `ansible-playbooks`.
 
 ## 1. Merging a version bump IS a deployment
 
-Dockhand polls this repository and redeploys when a stack's folder changes.
+Dockhand deploys each stack from this repository on that stack's schedule
+(main spec §12).
 **The pinned tag in git is the version running in production** — there is no
 separate deploy step to catch a mistake.
 
@@ -52,14 +53,15 @@ Consequences an agent must act on:
 - Never merge a major bump of `remnawave/node`, `angie` or `semaphore` without
   a decision recorded in an issue.
 - Prove a risky change on one node first, then the rest **one node at a
-  time** — never the fleet at once. There is no separate lab node any more;
-  every node serves users, so the first one is chosen, not spare.
+  time** — never the fleet at once. Every node serves users, so the first
+  one is chosen deliberately; none is a spare.
 
-## 2. Delivery is polling, never inbound webhooks
+## 2. Delivery is polling
 
-Admin surfaces are private-by-default behind the mesh, so an inbound webhook
-from GitHub is not an option that merely has not been built — it is
-architecturally excluded. Do not propose one.
+Each stack deploys on its own schedule, and the policy for inbound webhooks —
+including which of Dockhand's two endpoints actually reaches a stack in this
+multi-stack repository — is main spec §12. Read it there before proposing
+any change to how a merge reaches the nodes.
 
 ## 3. Angie `-templated` renders with gomplate, not envsubst
 
