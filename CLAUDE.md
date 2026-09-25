@@ -18,10 +18,15 @@ the no-secrets-in-git rule, the one-folder-one-stack layout and CI. This file
 adds only what an agent cannot infer and would get wrong.
 
 **Shared rules that apply here unchanged** — read them in the main spec rather
-than a copy: safety priority and the confirmation gate (§2, §4), English
+than a copy: safety priority and when to stop and ask (§2, §4), English
 artifacts and paired bilingual READMEs (§1), Conventional Commits with a
 mandatory scope (§9 — here the scope is the stack name, e.g.
 `feat(remnanode): …`), and diff discipline (§4).
+
+**One difference from the main spec, and it is absolute here:** a merge to
+`main` is a deploy (§1 below). The main spec lets an agent merge its own
+green pull request as part of being done; in this repository merging is
+always a stop — the user decides, every time.
 
 **Issues live in the private archive repository, not here.** This repository
 became public from a history-free snapshot; the backlog stayed behind because
@@ -46,8 +51,9 @@ Consequences an agent must act on:
   breaking changes, and say so in the review.
 - Never merge a major bump of `remnawave/node`, `angie` or `semaphore` without
   a decision recorded in an issue.
-- Prove a risky change on the lab node first, then **one production node at a
-  time** — never the fleet at once.
+- Prove a risky change on one node first, then the rest **one node at a
+  time** — never the fleet at once. There is no separate lab node any more;
+  every node serves users, so the first one is chosen, not spare.
 
 ## 2. Delivery is polling, never inbound webhooks
 
