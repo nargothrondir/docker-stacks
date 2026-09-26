@@ -40,6 +40,13 @@ it across redeploys, or every deploy burns a duplicate-certificate slot.
 Do not clear it on a live node: the config serves the certificate *from* the
 volume, so an empty volume means no TLS until issuance completes.
 
+The same volume is mounted **read-only** into `remnanode` at `/etc/xray-tls`,
+for Hysteria2: QUIC needs real TLS for the node's own name, which is exactly
+the certificate Angie keeps here. Xray re-reads the files hourly, so renewals
+by Angie need no restart. The path is deliberately one that does not exist in
+the panel container — the panel inlines certificate files it finds on its own
+filesystem, private key included, into the config it pushes to nodes.
+
 ## The DNS-01 hook
 
 Angie has no built-in DNS provider, so the challenge is answered by a small

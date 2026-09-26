@@ -140,6 +140,19 @@ services:
       - SECRET_KEY=${SECRET_KEY}
     volumes:
       - /dev/shm:/dev/shm:rw
+      # Hysteria2 needs real TLS for this node's own name, and Angie already
+      # holds exactly that certificate: the ACME client above issues and renews
+      # it into this volume (<client>/certificate.pem + private.key). Read-only;
+      # Xray re-reads the files every hour (transport/internet/tls/config.go,
+      # v26.6.27), so a renewal needs no restart.
+      #
+      # The mount point must NOT exist inside the panel container: when the
+      # panel builds a node's config it inlines any certificateFile/keyFile it
+      # finds on ITS OWN filesystem — private key included — and only passes
+      # a path through when the file is missing there. /etc/xray-tls keeps the
+      # key on the node. Unused until a profile carries a Hysteria2 inbound
+      # (ansible-playbooks enable-hysteria2.yml).
+      - angie-acme:/etc/xray-tls:ro
 
 volumes:
   # Create once per host: docker volume create angie-acme
