@@ -90,6 +90,10 @@ services:
       # purpose: empty means this node does not serve xHTTP and the location
       # is not rendered. Set per node from OpenBao by dockhand-stack.yml.
       - XHTTP_PATH=${XHTTP_PATH:-}
+      # How Angie reaches the xHTTP inbound: grpc (grpc_pass, the default) or
+      # http (proxy_pass, unbuffered). Per node, for comparing the two; set by
+      # dockhand-stack.yml when asked (xhttp_upstream). See angie.conf.
+      - XHTTP_UPSTREAM=${XHTTP_UPSTREAM:-grpc}
     volumes:
       # Mounted into the templates INPUT dir; gomplate renders it to
       # /etc/angie/http.d/default.conf (which the main config includes).

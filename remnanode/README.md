@@ -20,6 +20,7 @@ environment.
 | `NODE_NAME` | no | this node's short name (e.g. `pl`); required |
 | `CAMO_SITE` | no | which decoy site to serve; assigned per node by the provisioning pipeline, `converter` when unset |
 | `XHTTP_PATH` | **yes** | secret path of the xHTTP location (see [xHTTP](#xhttp)); set per node by the provisioning pipeline from OpenBao; empty = xHTTP off on this node |
+| `XHTTP_UPSTREAM` | no | how Angie reaches the xHTTP inbound: `grpc` (default, `grpc_pass`) or `http` (`proxy_pass`, unbuffered) — for comparing the two on one node; anything else fails the deploy |
 
 `ACME_DOMAIN` and `NODE_NAME` combine into `server_name
 <NODE_NAME>.<ACME_DOMAIN>`, so **each node issues a certificate for its own
@@ -172,7 +173,8 @@ new port and the xHTTP traffic arrives as HTTPS to the decoy site's name.
   playbooks in `ansible-playbooks` create it.
 - **`grpc_pass`, not `proxy_pass`**: it streams the request body instead of
   buffering it first, so every xHTTP mode passes; see the comment in
-  `angie.conf`.
+  `angie.conf`. `XHTTP_UPSTREAM=http` switches one node to `proxy_pass` with both
+  buffers off, to compare the two on real traffic.
 
 ## Reality camouflage
 
