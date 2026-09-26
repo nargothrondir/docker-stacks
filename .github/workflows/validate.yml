@@ -51,20 +51,34 @@ jobs:
             # angie.conf may be a gomplate template (e.g. {{ .Env.ACME_DOMAIN }}).
             # Mount it into the templates input dir and let the templated image's
             # entrypoint render it (gomplate) before angie -t validates the result.
-            # Rendered twice: optional variables (XHTTP_PATH) gate whole blocks,
-            # and a block that is never rendered in CI is never checked.
-            for xhttp_path in "" "/ci-xhttp/"; do
-              echo "-- XHTTP_PATH='$xhttp_path' --"
+            # Rendered once per variant: optional variables (XHTTP_PATH,
+            # XHTTP_UPSTREAM) gate whole blocks, and a block that is never
+            # rendered in CI is never checked. Variant = "<path>|<upstream>".
+            render() {
               docker run --rm \
                 -e ANGIE_FEATURE_TEMPLATE=on \
                 -e ACME_DOMAIN=ci.example.com \
                 -e NODE_NAME=ci \
-                -e XHTTP_PATH="$xhttp_path" \
+                -e XHTTP_PATH="$1" \
+                -e XHTTP_UPSTREAM="$2" \
                 -v "$PWD/$conf:/etc/angie/templates/http.d/default.conf:ro" \
                 -v "$PWD/certs/fullchain.pem:/etc/angie/ssl/example.com/fullchain.pem:ro" \
                 -v "$PWD/certs/privkey.pem:/etc/angie/ssl/example.com/privkey.pem:ro" \
                 docker.angie.software/angie:templated angie -t
+            }
+            for variant in "|grpc" "/ci-xhttp/|grpc" "/ci-xhttp/|http"; do
+              echo "-- XHTTP_PATH='${variant%%|*}' XHTTP_UPSTREAM='${variant##*|}' --"
+              render "${variant%%|*}" "${variant##*|}"
             done
+            # The guard must bite: an unknown upstream has to fail the render,
+            # not fall back to the default in silence.
+            if grep -q XHTTP_UPSTREAM "$conf"; then
+              echo "-- XHTTP_UPSTREAM='bogus' must fail --"
+              if render "/ci-xhttp/" "bogus"; then
+                echo "::error::$conf accepted XHTTP_UPSTREAM=bogus"
+                exit 1
+              fi
+            fi
           done
           [ "$found" = 1 ] || echo "No angie.conf files found — nothing to check."
 
