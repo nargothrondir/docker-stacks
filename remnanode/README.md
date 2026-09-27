@@ -137,8 +137,19 @@ Traffic through the file:
 ### 1. Server identity
 
 `server_tokens off` removes the version from the `Server` header and from error
-pages. Replacing the name itself ("Angie") or dropping the header takes Angie
-PRO — the open-source build accepts `on | off | build` only.
+pages. Replacing the name itself takes Angie PRO — the open-source build
+accepts `on | off | build` only — so `more_set_headers "Server: nginx"` does it
+instead, through the headers-more module. The image ships the module and loads
+it when `ANGIE_LOAD_MODULES` names it (set in `docker-compose.yml`; the image's
+main-config template is `/etc/angie/templates/angie.conf`, not the
+`ANGIE_CONFIG_TEMPLATE` path its environment still names).
+
+Why: Angie is rare outside Russia and nginx is the most common web server
+there is, so "Server: Angie" on a foreign VPS is a small but free signal; Angie
+is an nginx fork and behaves like one on the wire. The header is set on every
+response, error pages included. The bodies of Angie's own error pages still
+carry its name — the 404 is replaced by the site's page (section 4); other
+error pages are not reachable from outside in normal operation.
 
 `server_names_hash_bucket_size 64` leaves room for long node names.
 
