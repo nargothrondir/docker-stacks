@@ -63,6 +63,42 @@ the wire (lab node, 2026-08-10): with the directive removed and the ACME state
 wiped, the whole issuance sent 16 packets to the local stub and 62 to the
 upstream on 853, none to 1.1.1.1:53 or 8.8.8.8:53.
 
+## TLS
+
+The TLS block in `angie.conf` is shared by every listener, and on this node it
+is more than the decoy site's encryption: **it is what every TCP client of the
+node is seen doing.**
+
+- REALITY uses its target's handshake as its camouflage, and the target here is
+  this Angie. If the target supports `X25519MLKEM768`, REALITY clients that
+  offer it use it too (Xray docs, REALITY `target`). Mihomo strips that group
+  from its REALITY ClientHello unless `support-x25519mlkem768` is set
+  (`component/tls/reality.go`, v1.19.31), so for Mihomo users REALITY stays on
+  X25519 either way.
+- xHTTP clients, browsers and probes finish their TLS here.
+
+So the aim is to look like an ordinary, current web server, and the profile is
+the one most such servers are configured from: **Mozilla "intermediate",
+guidelines 6.0** (ssl-config.mozilla.org). Relative to the 5.x profile this file
+carried before:
+
+- `X25519MLKEM768` first among the groups — the hybrid post-quantum exchange
+  current browsers offer. Needs OpenSSL 3.5 or newer; the image has 3.5.x.
+- No `DHE-RSA-*` suites. They were never used anyway: DHE needs `ssl_dhparam`,
+  which is not set.
+- `ssl_prefer_server_ciphers off`: every suite on the list is strong, so the
+  client picks — which is also what a stock configuration does.
+- No OCSP stapling: Let's Encrypt shut its OCSP service down on 2025-08-06 and
+  publishes revocation through CRLs only.
+
+`ssl_session_tickets off` and the `MozSSL` session cache are carried over from
+the same profile.
+
+The catch-all server (`default_server`) refuses any handshake whose SNI is not
+this node's name, before a certificate is shown. It also closes (`444`) a
+request whose `Host` names no server — which can arrive after a handshake on
+this node's name, and would otherwise be answered by the catch-all.
+
 ## The DNS-01 hook
 
 Angie has no built-in DNS provider, so the challenge is answered by a small
