@@ -194,10 +194,17 @@ upstream on 853, none to 1.1.1.1:53 or 8.8.8.8:53.
 ### 4. Node virtual host
 
 The server for this node's own name: its certificate (issued and renewed by
-section 3), the `X-Robots-Tag` header that keeps the decoy out of search
-engines, the decoy site itself ([Reality camouflage](#reality-camouflage)),
-and — when `XHTTP_PATH` is set — the xHTTP location
-([xHTTP](#xhttp)).
+section 3), the decoy site ([Reality camouflage](#reality-camouflage)), and —
+when `XHTTP_PATH` is set — the xHTTP location ([xHTTP](#xhttp)).
+
+| Line | Why |
+|---|---|
+| `set_real_ip_from unix:` + `real_ip_header proxy_protocol` | every connection arrives over the unix socket, so without this the access log records `unix:` for every request. With it, `$remote_addr` is the client address from the PROXY header REALITY sent, and the decoy's log shows who scans and probes the node. Only unix-socket peers are trusted (the special value `unix:` of the realip module); the ACME hook's loopback TCP listener is not affected. Users never appear in this log: REALITY traffic does not reach Angie, and the xHTTP location does not log |
+| `Strict-Transport-Security "max-age=63072000"` | what an HTTPS-only site sends (Mozilla guidelines: two years). The node has no port 80 at all, so there is nothing to break |
+| `X-Robots-Tag` | keeps the decoy out of search engines |
+| `location /` → `try_files $uri $uri/ =404` | the decoy is static: a file, a directory index, or not found |
+| `error_page 404 /index.html` | none of the bundled sites has a 404 page, so an unknown path used to get Angie's stock page with its name in the body. Now it gets the site's own page, still with status 404 — what many small sites do |
+| `gzip` for CSS, JS, JSON, SVG (and HTML, always included) | ordinary sites compress text, and the decoy loads faster. Only inside `location /`: the xHTTP stream is never compressed, compression would buffer it |
 
 The xHTTP location, line by line:
 
