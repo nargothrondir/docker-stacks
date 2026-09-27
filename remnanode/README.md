@@ -47,6 +47,22 @@ by Angie need no restart. The path is deliberately one that does not exist in
 the panel container — the panel inlines certificate files it finds on its own
 filesystem, private key included, into the config it pushes to nodes.
 
+**One certificate per node, for its own name** (`NODE_NAME.ACME_DOMAIN`), not a
+fleet-wide wildcard: a node's key is valid only for that node's name, so a
+seized node cannot impersonate the panel or another node, and distinct names
+keep Let's Encrypt's duplicate-certificate limit from tying the nodes together.
+
+**No `resolver` directive, on purpose.** Angie 1.12 reads `/etc/resolv.conf`
+itself and watches it for changes, and this container runs with
+`network_mode: host` — so that is the host's file, the same encrypted resolver
+apt, NetBird and everything else on the node uses. A hardcoded
+`resolver 1.1.1.1 8.8.8.8` made the ACME client a second, independent DNS path
+that ignored the node's configuration and asked in plaintext — for exactly the
+lookups that reveal which name is getting a certificate and when. Verified on
+the wire (lab node, 2026-08-10): with the directive removed and the ACME state
+wiped, the whole issuance sent 16 packets to the local stub and 62 to the
+upstream on 853, none to 1.1.1.1:53 or 8.8.8.8:53.
+
 ## The DNS-01 hook
 
 Angie has no built-in DNS provider, so the challenge is answered by a small
@@ -179,9 +195,26 @@ new port and the xHTTP traffic arrives as HTTPS to the decoy site's name.
   `sockopt.trustedXForwardedFor` to see client addresses. The provisioning
   playbooks in `ansible-playbooks` create it.
 - **`grpc_pass`, not `proxy_pass`**: it streams the request body instead of
-  buffering it first, so every xHTTP mode passes; see the comment in
-  `angie.conf`. `XHTTP_UPSTREAM=http` switches one node to `proxy_pass` with both
-  buffers off, to compare the two on real traffic.
+  buffering it first, so every xHTTP mode passes. `XHTTP_UPSTREAM=http`
+  switches one node to `proxy_pass` with both buffers off, to compare the two on
+  real traffic; any other value fails the render, so a typo stops the container
+  instead of quietly running the default. Measured on one node in 2026-09
+  (delay tests after 90 s of idle): `grpc` 1 failure in 20, `http` 6 in 20.
+
+The location, line by line:
+
+| Line | Why |
+|---|---|
+| `grpc_pass unix:/dev/shm/xhttp.sock` | HTTP/2 to the inbound's socket, request body streamed as it arrives. Same shape as XTLS/Xray-examples `VLESS-XHTTP3-Nginx` |
+| `grpc_read_timeout` / `grpc_send_timeout 1h` | Xray closes idle connections at 300 s and watches **both** directions; Angie watches one stream at a time. At the example's 315 s it cut a download stream that stayed silent while the client kept uploading (`upstream timed out (110) while reading upstream`, 2026-09-23). An hour leaves the decision to Xray |
+| `client_max_body_size 0` | a packet-up POST is up to 1 000 000 bytes (`scMaxEachPostBytes`), right at the 1m default |
+| `client_body_timeout 5m` | a slow client's POST is not cut mid-body |
+| `X-Real-IP` / `X-Forwarded-For` from `$proxy_protocol_addr` | the client address from the PROXY header REALITY sent. Xray honours `X-Forwarded-For` only when a header named in the inbound's `sockopt.trustedXForwardedFor` (`X-Real-IP`) is present; both are overwritten, so a client cannot forge them |
+| `access_log off` | in packet-up every upload chunk is its own POST, its `Referer` padded with 100–1000 bytes: ~1 MB of log in three minutes of one client (measured 2026-09-23), every line holding the secret path and a timeline of who moved how much. The decoy site keeps its log |
+
+`upstream prematurely closed connection` in the error log is the normal end of
+an idle xHTTP stream: Xray ends it on its own idle timeout, and xHTTP is not
+gRPC, so it sends no trailers.
 
 ## Reality camouflage
 
