@@ -94,6 +94,12 @@ services:
       # http (proxy_pass, unbuffered). Per node, for comparing the two; set by
       # dockhand-stack.yml when asked (xhttp_upstream). See angie.conf.
       - XHTTP_UPSTREAM=${XHTTP_UPSTREAM:-grpc}
+      # Dynamic modules the image's own main-config template loads
+      # (/etc/angie/templates/angie.conf: load_module lines gated on this
+      # list). headers-more lets angie.conf set the Server header — see
+      # README "1. Server identity". Same for every node, so not a Dockhand
+      # variable; CI reads this line too.
+      - ANGIE_LOAD_MODULES=headers-more
     volumes:
       # Mounted into the templates INPUT dir; gomplate renders it to
       # /etc/angie/http.d/default.conf (which the main config includes).
