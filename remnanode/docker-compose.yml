@@ -38,7 +38,7 @@ services:
     # a rebuilt image would go unannounced; anchored to a tag, it can offer the
     # bump the way it does for every other image here. The publish job prints
     # the digest to paste in.
-    image: ghcr.io/nargothrondir/acme-hook:latest@sha256:7f193d5ae2f6c5550a5c87e20fd19ade83a469eda5aea0d67f3662a5bbdd5f55
+    image: ghcr.io/nargothrondir/acme-hook:latest@sha256:743db54afd5a13e2b33b12e36d2622b872439cc8ae7bff12dd811471f9f4f6c5
     container_name: acme-hook
     hostname: acme-hook
     <<: [*common, *logging]
